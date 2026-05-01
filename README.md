@@ -24,15 +24,7 @@ Nie wrzucaj do repo:
 - `models/`
   - modele HTR
 - `scripts/`
-  - skrypty do preprocessingu, cięcia, review i treningu
-
-## Co potrzebujemy teraz
-
-1. Stabilnego `layout` dla wielu typow stron.
-2. Sensownego `review UI` z szybkim oznaczaniem pol.
-3. Importu/eksportu poprawek do datasetu.
-4. Datasetu z wielu gmin.
-5. Pierwszego benchmarku `przed/po` treningu.
+  - skrypty do preprocessingu, ciecia, review i treningu
 
 ## Aktualna sciezka
 
@@ -41,5 +33,32 @@ Nie wrzucaj do repo:
 3. `build_cell_review_manifest.py`
 4. `build_review_html.py`
 5. review i eksport poprawek
-6. `build_training_set.py`
-7. `run_ketos_finetune.py`
+6. `import_review_export.py`
+7. `build_training_set.py`
+8. `run_ketos_finetune.py`
+
+## Trening
+
+Najstabilniejsza sciezka na Windowsie jest teraz taka:
+
+1. zbuduj path-format dataset:
+   - `build_training_set.py`
+2. skompiluj go do `dataset.arrow`
+3. trenuj `ketos` z `-f binary`
+
+Skrypt `run_ketos_finetune.py` robi kroki 2 i 3 sam:
+
+```powershell
+python scripts/run_ketos_finetune.py `
+  --ground-truth-dir C:\Users\Nocna\source\handwritten-htr\outputs\training-set-context\ground-truth `
+  --output-dir C:\Users\Nocna\source\handwritten-htr\outputs\finetune-context `
+  --base-model C:\Users\Nocna\AppData\Local\htrmopo\htrmopo\199fb0ec-cf40-50aa-b99a-69ba1f42f0bc\lectaurep_base.mlmodel `
+  --epochs 3 `
+  --workers 0
+```
+
+Uwagi:
+
+- skrypt ustawia `PYTHONUTF8=1` i `PYTHONIOENCODING=utf-8`
+- odpala `ketos` z `-v`, co wylacza progress bary powodujace problemy z kodowaniem na Windowsie
+- wymusza `-q fixed`, zeby liczba epok byla respektowana
