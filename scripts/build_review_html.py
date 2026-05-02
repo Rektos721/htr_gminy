@@ -257,6 +257,7 @@ HTML_TEMPLATE = """<!doctype html>
         </section>
         <section class="panel edit-wrap">
           <div class="label">Transkrypcja</div>
+          <div id="guessBox" style="margin-bottom:10px;color:var(--muted);display:none"></div>
           <textarea id="textArea" spellcheck="false"></textarea>
         </section>
       </div>
@@ -401,10 +402,18 @@ HTML_TEMPLATE = """<!doctype html>
       renderList();
       const item = filtered[index];
       document.getElementById("imageName").textContent = `${item.page_name} | ${item.notes}`;
-      document.getElementById("textArea").value = item.text || "";
+      document.getElementById("textArea").value = item.text || item.ocr_guess || "";
       document.getElementById("notesInput").value = item.notes || "";
       document.getElementById("statusSelect").value = item.status || "todo";
       document.getElementById("counter").textContent = `${index + 1} / ${filtered.length}`;
+      const guessBox = document.getElementById("guessBox");
+      if (item.ocr_guess) {
+        guessBox.style.display = "block";
+        guessBox.innerHTML = `<strong>OCR guess:</strong> ${escapeHtml(item.ocr_guess)}`;
+      } else {
+        guessBox.style.display = "none";
+        guessBox.textContent = "";
+      }
       updatePageView(item);
       refreshUncertaintyUi();
     }
@@ -570,6 +579,7 @@ def main() -> None:
                     "status": (row.get("status") or "todo").strip() or "todo",
                     "notes": (row.get("notes") or "").strip(),
                     "text": text,
+                    "ocr_guess": (row.get("ocr_guess") or "").strip(),
                     "box": {
                         "left": left,
                         "top": top,
