@@ -378,6 +378,7 @@ https://uldk.gugik.gov.pl/?request=GetParcelById&id={TERYT}.{obreb}.{nr}
 | `parse_wz_output.py` | Gemini CSV (cols_json) → parsuje 7 kolumn → Excel (.xlsx) |
 | `uldk_verify.py` | Weryfikacja numerów działek przez ULDK API gugik.gov.pl |
 | `test_gemini_ocr.py` | Szybki test OCR Gemini na jednym obrazku |
+| `requirements.txt` | Zależności pip — `pip install -r requirements.txt` |
 
 ---
 
@@ -386,6 +387,7 @@ https://uldk.gugik.gov.pl/?request=GetParcelById&id={TERYT}.{obreb}.{nr}
 ```powershell
 git clone https://github.com/Rektos721/htr_gminy
 cd htr_gminy
+pip install -r requirements.txt
 
 # Modele są w repo (models/*.mlmodel) — gotowe do użycia.
 # Skany i dane treningowe musisz mieć lokalnie — nie ma ich w repo.
