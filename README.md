@@ -8,6 +8,25 @@ Pipeline HTR (Handwritten Text Recognition) dla historycznych ksiąg metrykalnyc
 
 ---
 
+## ⚠️ Zasada: minimalizuj użycie płatnych API
+
+**Gemini API generuje koszty. Używaj go tylko gdy nie ma alternatywy.**
+
+| Zadanie | Właściwe podejście |
+|---------|-------------------|
+| OCR w produkcji (gotowy model) | **Kraken lokalnie** — zero kosztów |
+| Generowanie GT dla nowego typu dokumentu | Gemini jednorazowo, potem review GUI + Kraken draft |
+| Korekta wyników HTR | **Tylko jeśli CER > 10%** i ręczny review jest wolniejszy |
+| Testowanie / debugowanie | Zawsze najpierw Kraken, Gemini tylko gdy Kraken kompletnie nie daje rady |
+
+**Docelowy stan produkcyjny: Gemini w ogóle nie uczestniczy w przetwarzaniu.**  
+Pipeline: `PDF → Kraken segmentacja → HTR (lokalny model) → parser → Excel → ULDK`
+
+Gemini był potrzebny **jednorazowo** do bootstrapu datasetu treningowego.  
+Gdy model osiągnie CER < 5% na dokumentach WZ — `gemini_ocr_pages.py` idzie na emeryturę.
+
+---
+
 ## Środowisko
 
 ```
