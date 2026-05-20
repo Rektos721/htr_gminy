@@ -49,7 +49,7 @@ if self.transforms is not None:
 | Plik | Opis | Rozmiar |
 |------|------|---------|
 | `models/McCATMuS_nfd_nofix_V1.mlmodel` | Model bazowy McCATMuS — ogólny HTR XVI–XXI w. (wielojęzyczny) | 15 MB |
-| `models/htr_wysoka_v2.mlmodel` | Fine-tune na dokumentach Wysoka + POPP (epoch 16/30) | 15 MB |
+| `models/htr_docs_polish_v2.mlmodel` | Fine-tune na dokumentach Wysoka + POPP (epoch 16/30) | 15 MB |
 
 **htr_wysoka_v2** — wyniki treningu:
 - Dataset: 275 wierszy Wysoka (Gemini OCR) + 500 wierszy POPP (franc. rejestry cywilne 1920s)
@@ -67,7 +67,7 @@ if self.transforms is not None:
 htr_gminy/
 ├── models/
 │   ├── McCATMuS_nfd_nofix_V1.mlmodel   # model bazowy
-│   └── htr_wysoka_v2.mlmodel           # aktualny model roboczy
+│   └── htr_docs_polish_v2.mlmodel           # aktualny model roboczy
 ├── scripts/                             # wszystkie skrypty (opis niżej)
 ├── outputs/                             # ← w .gitignore, nie ma w repo
 │   └── training/
@@ -149,7 +149,7 @@ Funkcje:
 python scripts\run_ketos_finetune.py `
     --ground-truth-dir outputs\training\ground-truth `
     --output-dir       outputs\model_v3 `
-    --base-model       models\htr_wysoka_v2.mlmodel `
+    --base-model       models\htr_docs_polish_v2.mlmodel `
     --manifest         outputs\training\training_manifest.csv `
     --only-ready `
     --epochs           30 `
@@ -179,7 +179,7 @@ python scripts\finalize_model.py --model-dir outputs\model_v3 --output models\ht
 ## Szybki test modelu
 
 ```powershell
-kraken -i <skan.jpg> wynik.txt ocr -m models\htr_wysoka_v2.mlmodel
+kraken -i <skan.jpg> wynik.txt ocr -m models\htr_docs_polish_v2.mlmodel
 ```
 
 ---
