@@ -8,14 +8,12 @@ venv/
 .python-version
 
 outputs/
-models/
+external_data/
 
 samples/handwritten/
 samples/prepared/
 samples/single/
 samples/wz/
-
-*.mlmodel
 *.jsonl
 *.log
 

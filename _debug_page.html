@@ -1,20 +1,4 @@
-from __future__ import annotations
-
-import argparse
-import csv
-import json
-import mimetypes
-import threading
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
-from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
-
-
-HTML_PAGE = """<!doctype html>
+<!doctype html>
 <html lang="pl">
 <head>
   <meta charset="utf-8">
@@ -422,7 +406,7 @@ HTML_PAGE = """<!doctype html>
 
     const STATUS_ORDER = { todo: 0, ready: 1, done: 2 };
 
-    function rebuildFilter() {
+    function applyFilter() {
       const status = document.getElementById('filterStatus').value.trim().toLowerCase();
       const query = document.getElementById('searchBox').value.trim().toLowerCase();
       filteredItems = items.filter(item => {
@@ -439,17 +423,13 @@ HTML_PAGE = """<!doctype html>
         });
       }
       renderList();
-    }
-
-    function applyFilter() {
-      const prevId = getCurrentItem()?.id;
-      rebuildFilter();
       if (!filteredItems.length) {
         currentIndex = -1;
         clearEditor();
         return;
       }
-      const nextIndex = filteredItems.findIndex(item => item.id === prevId);
+      const currentId = getCurrentItem()?.id;
+      const nextIndex = filteredItems.findIndex(item => item.id === currentId);
       openItem(nextIndex >= 0 ? nextIndex : 0);
     }
 
@@ -529,12 +509,14 @@ HTML_PAGE = """<!doctype html>
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(payload),
       });
-      const savedIndex = currentIndex;
       items = data.items;
-      rebuildFilter();
-      const fallback = Math.min(savedIndex, filteredItems.length - 1);
-      if (fallback >= 0) await openItem(fallback);
-      else clearEditor();
+      applyFilter();
+      const newIndex = filteredItems.findIndex(entry => entry.id === item.id);
+      if (newIndex >= 0) {
+        currentIndex = newIndex;
+        renderList();
+        updateCounter();
+      }
     }
 
     function escapeHtml(value) {
@@ -561,7 +543,7 @@ HTML_PAGE = """<!doctype html>
       // extract capitalized words >3 chars that look like place names
       // skip common table separators and numbers
       const skip = new Set(['True','False','None']);
-      const words = text.split(/[\\s|,;.]+/);
+      const words = text.split(/[\s|,;.]+/);
       const candidates = [];
       for (const w of words) {
         const clean = w.trim();
@@ -719,7 +701,8 @@ HTML_PAGE = """<!doctype html>
       const item = getCurrentItem();
       if (!item) return;
       const sign = offset > 0 ? '+' : '';
-      if (!confirm('Przesunac OCR calej strony o ' + sign + offset + '? Zmieni gt_text dla wszystkich wierszy tej strony.')) return;
+      if (!confirm('Przesunac OCR calej strony o ' + sign + offset + '?
+Zmieni gt_text dla wszystkich wierszy tej strony.')) return;
       try {
         const data = await fetchJson('/api/shift_ocr', {
           method: 'POST',
@@ -727,10 +710,8 @@ HTML_PAGE = """<!doctype html>
           body: JSON.stringify({ id: item.id, offset: offset }),
         });
         items = data.items;
-        const savedId = item.id;
-        items = data.items;
-        rebuildFilter();
-        const newIndex = filteredItems.findIndex(i => i.id === savedId);
+        applyFilter();
+        const newIndex = filteredItems.findIndex(i => i.id === item.id);
         if (newIndex >= 0) await openItem(newIndex);
         alert('Przesunieto OCR dla ' + data.updated + ' wierszy strony.');
       } catch (e) {
@@ -750,11 +731,10 @@ HTML_PAGE = """<!doctype html>
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({ id: item.id }),
         });
-        const delIndex = currentIndex;
         items = data.items;
-        rebuildFilter();
-        const next = Math.min(delIndex, filteredItems.length - 1);
-        if (next >= 0) await openItem(next); else clearEditor();
+        applyFilter();
+        const next = Math.min(currentIndex, filteredItems.length - 1);
+        if (next >= 0) openItem(next); else clearEditor();
       } catch (e) {
         alert('Blad usuwania: ' + e.message);
       }
@@ -775,366 +755,4 @@ HTML_PAGE = """<!doctype html>
   </script>
 </body>
 </html>
-"""
 
-NOMINATIM_URL = "https://nominatim.openstreetmap.org"
-NOMINATIM_UA = "htr_gminy_review/1.0 (NocnaZjawa72@o2.pl)"
-_last_nominatim = 0.0
-_nominatim_lock = threading.Lock()
-
-
-def _nominatim_get(params: dict) -> list[dict]:
-    global _last_nominatim
-    with _nominatim_lock:
-        elapsed = time.time() - _last_nominatim
-        if elapsed < 1.1:
-            time.sleep(1.1 - elapsed)
-        url = f"{NOMINATIM_URL}/search?" + urllib.parse.urlencode(params)
-        req = urllib.request.Request(url, headers={"User-Agent": NOMINATIM_UA})
-        try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            if e.code == 429:
-                time.sleep(5.0)
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-            else:
-                raise
-        _last_nominatim = time.time()
-        return data if isinstance(data, list) else []
-
-
-class TerytSearcher:
-    def __init__(self, region: str | None) -> None:
-        self.region = region
-        self.bbox: tuple[float, float, float, float] | None = None
-        self._cache: dict[str, list[dict]] = {}
-        if region:
-            self._init_bbox(region)
-
-    def _init_bbox(self, region: str) -> None:
-        try:
-            results = _nominatim_get({
-                "q": region,
-                "format": "json",
-                "limit": 1,
-                "countrycodes": "pl",
-            })
-            if results:
-                r = results[0]
-                bb = r.get("boundingbox", [])
-                if len(bb) == 4:
-                    # Nominatim: [south, north, west, east]
-                    self.bbox = (float(bb[2]), float(bb[0]), float(bb[3]), float(bb[1]))
-                    print(f"TERYT region '{region}' bbox: {self.bbox}")
-                else:
-                    print(f"TERYT: brak bbox dla '{region}'")
-            else:
-                print(f"TERYT: nie znaleziono regionu '{region}'")
-        except Exception as e:
-            print(f"TERYT: blad inicjalizacji regionu: {e}")
-
-    def reset(self, region: str | None) -> None:
-        self.region = region
-        self.bbox = None
-        self._cache.clear()
-        if region:
-            self._init_bbox(region)
-
-    def search(self, query: str, limit: int = 8) -> list[dict]:
-        key = query.lower().strip()
-        if key in self._cache:
-            return self._cache[key]
-        params: dict = {
-            "q": query,
-            "format": "json",
-            "limit": limit,
-            "countrycodes": "pl",
-            "addressdetails": "1",
-            "featuretype": "settlement",
-        }
-        if self.bbox:
-            west, south, east, north = self.bbox
-            params["viewbox"] = f"{west},{north},{east},{south}"
-            params["bounded"] = "1"
-        try:
-            raw = _nominatim_get(params)
-        except Exception as e:
-            print(f"TERYT search error: {e}")
-            return []
-
-        results = []
-        for item in raw:
-            name = item.get("name") or item.get("display_name", "").split(",")[0]
-            addr_parts = item.get("address", {})
-            parts = []
-            for key2 in ("village", "town", "city", "municipality", "county", "state"):
-                v = addr_parts.get(key2)
-                if v and v != name:
-                    parts.append(v)
-                    if len(parts) == 2:
-                        break
-            address = ", ".join(parts) if parts else item.get("display_name", "")[:60]
-            results.append({
-                "name": name,
-                "address": address,
-                "lat": item.get("lat", ""),
-                "lon": item.get("lon", ""),
-            })
-        self._cache[key] = results
-        return results
-
-
-class ReviewStore:
-    def __init__(self, manifest_path: Path) -> None:
-        self.manifest_path = manifest_path
-        self.fieldnames: list[str] = []
-        self.rows: list[dict[str, str]] = []
-        self.load()
-
-    def load(self) -> None:
-        with self.manifest_path.open("r", encoding="utf-8", newline="") as handle:
-            reader = csv.DictReader(handle)
-            self.fieldnames = list(reader.fieldnames or [])
-            self.rows = [dict(row) for row in reader]
-        # Ensure status/notes columns exist
-        for col in ("status", "notes", "manual_text_path"):
-            if col not in self.fieldnames:
-                self.fieldnames.append(col)
-                for row in self.rows:
-                    if col not in row:
-                        row[col] = ""
-        # Auto-derive manual_text_path from image path for training manifests
-        for row in self.rows:
-            if not row.get("manual_text_path"):
-                img = Path(row.get("image", ""))
-                row["manual_text_path"] = str(img.with_suffix(".gt.txt"))
-
-    def save(self) -> None:
-        with self.manifest_path.open("w", encoding="utf-8", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=self.fieldnames, extrasaction="ignore")
-            writer.writeheader()
-            writer.writerows(self.rows)
-
-    def list_items(self) -> list[dict[str, object]]:
-        items: list[dict[str, object]] = []
-        for idx, row in enumerate(self.rows):
-            text = self._read_text(Path(row["manual_text_path"]))
-            items.append(
-                {
-                    "id": idx,
-                    "image_name": Path(row["image"]).name,
-                    "manual_text_path": row["manual_text_path"],
-                    "status": row.get("status", "todo"),
-                    "notes": row.get("notes", ""),
-                    "text_length": len(text.strip()),
-                }
-            )
-        return items
-
-    def get_item(self, idx: int) -> dict[str, object]:
-        row = self.rows[idx]
-        text_path = Path(row["manual_text_path"])
-        return {
-            "id": idx,
-            "image_name": Path(row["image"]).name,
-            "image_path": row["image"],
-            "manual_text_path": row["manual_text_path"],
-            "status": row.get("status", "todo"),
-            "notes": row.get("notes", ""),
-            "text": self._read_text(text_path),
-        }
-
-    def shift_ocr_page(self, source_name: str, offset: int, ocr_csv: Path) -> int:
-        stem = Path(source_name).stem
-        ocr_data: dict[int, str] = {}
-        with ocr_csv.open(encoding="utf-8", newline="") as f:
-            for row in csv.DictReader(f):
-                if Path(row["source"]).stem != stem:
-                    continue
-                try:
-                    r = int(row["row"])
-                    cols = json.loads(row["cols_json"])
-                    text = " | ".join(str(c).strip() for c in cols if str(c).strip())
-                    ocr_data[r] = text
-                except (ValueError, json.JSONDecodeError):
-                    pass
-        updated = 0
-        for manifest_row in self.rows:
-            if manifest_row["source"] != source_name:
-                continue
-            new_ocr_idx = int(manifest_row["row"]) + offset
-            text = ocr_data.get(new_ocr_idx, "")
-            manifest_row["gt_text"] = text
-            manifest_row["has_text"] = str(bool(text))
-            gt = Path(manifest_row["manual_text_path"])
-            gt.write_text(text, encoding="utf-8")
-            updated += 1
-        self.save()
-        return updated
-
-    def delete_item(self, idx: int) -> None:
-        self.rows.pop(idx)
-        self.save()
-
-    def update_item(self, idx: int, text: str, status: str, notes: str) -> None:
-        row = self.rows[idx]
-        text_path = Path(row["manual_text_path"])
-        text_path.parent.mkdir(parents=True, exist_ok=True)
-        text_path.write_text(text, encoding="utf-8")
-        row["status"] = status
-        row["notes"] = notes
-        self.save()
-
-    def image_path(self, idx: int) -> Path:
-        return Path(self.rows[idx]["image"])
-
-    @staticmethod
-    def _read_text(path: Path) -> str:
-        if not path.exists():
-            return ""
-        return path.read_text(encoding="utf-8", errors="ignore")
-
-
-def make_handler(store: ReviewStore, searcher: TerytSearcher, ocr_csv: Path):
-    class Handler(BaseHTTPRequestHandler):
-        def _send_json(self, payload: object, status: int = 200) -> None:
-            data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-
-        def _send_html(self, body: str, status: int = 200) -> None:
-            data = body.encode("utf-8")
-            self.send_response(status)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-
-        def _send_file(self, path: Path) -> None:
-            if not path.exists():
-                self.send_error(HTTPStatus.NOT_FOUND, "File not found")
-                return
-            mime, _ = mimetypes.guess_type(path.name)
-            data = path.read_bytes()
-            self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", mime or "application/octet-stream")
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-
-        def do_GET(self) -> None:
-            from urllib.parse import urlparse, parse_qs
-            parsed = urlparse(self.path)
-            if parsed.path == "/":
-                self._send_html(HTML_PAGE)
-                return
-            if parsed.path == "/api/items":
-                self._send_json({"items": store.list_items()})
-                return
-            if parsed.path == "/api/item":
-                params = parse_qs(parsed.query)
-                idx = int(params.get("id", ["0"])[0])
-                self._send_json(store.get_item(idx))
-                return
-            if parsed.path == "/image":
-                params = parse_qs(parsed.query)
-                idx = int(params.get("id", ["0"])[0])
-                self._send_file(store.image_path(idx))
-                return
-            if parsed.path == "/api/teryt/search":
-                params = parse_qs(parsed.query)
-                q = params.get("q", [""])[0].strip()
-                if not q:
-                    self._send_json({"results": []})
-                    return
-                results = searcher.search(q)
-                self._send_json({"results": results})
-                return
-            if parsed.path == "/api/teryt/region":
-                self._send_json({"region": searcher.region or ""})
-                return
-            self.send_error(HTTPStatus.NOT_FOUND, "Not found")
-
-        def do_POST(self) -> None:
-            from urllib.parse import urlparse
-            parsed = urlparse(self.path)
-            length = int(self.headers.get("Content-Length", "0"))
-            raw = self.rfile.read(length)
-            if parsed.path == "/api/save":
-                payload = json.loads(raw.decode("utf-8"))
-                idx = int(payload["id"])
-                text = payload.get("text", "")
-                status = payload.get("status", "todo")
-                notes = payload.get("notes", "")
-                store.update_item(idx=idx, text=text, status=status, notes=notes)
-                self._send_json({"ok": True, "items": store.list_items()})
-                return
-            if parsed.path == "/api/teryt/setregion":
-                payload = json.loads(raw.decode("utf-8"))
-                region = payload.get("region", "").strip()
-                searcher.reset(region or None)
-                self._send_json({"region": searcher.region or ""})
-                return
-            if parsed.path == "/api/delete":
-                payload = json.loads(raw.decode("utf-8"))
-                idx = int(payload["id"])
-                store.delete_item(idx)
-                self._send_json({"ok": True, "items": store.list_items()})
-                return
-            if parsed.path == "/api/shift_ocr":
-                payload = json.loads(raw.decode("utf-8"))
-                idx = int(payload["id"])
-                offset = int(payload["offset"])
-                source_name = store.rows[idx]["source"]
-                updated = store.shift_ocr_page(source_name, offset, ocr_csv)
-                self._send_json({"ok": True, "updated": updated, "items": store.list_items()})
-                return
-            self.send_error(HTTPStatus.NOT_FOUND, "Not found")
-
-
-        def log_message(self, fmt: str, *args) -> None:
-            return
-
-    return Handler
-
-
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Local GUI for correcting handwritten HTR samples.")
-    parser.add_argument("--manifest", required=True, type=Path)
-    parser.add_argument("--ocr-csv", type=Path, default=None,
-                        help="Sciezka do ocr_pages.csv (domyslnie ../ocr_pages.csv wzgledem manifestu)")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--region", default=None,
-                        help="Gmina/powiat do ograniczenia wyszukiwania TERYT, np. 'gmina Wysoka'")
-    return parser
-
-
-def main() -> None:
-    import sys
-    sys.stdout.reconfigure(encoding="utf-8")
-    args = build_parser().parse_args()
-    manifest_path = args.manifest.resolve()
-    if not manifest_path.exists():
-        raise SystemExit(f"Manifest not found: {manifest_path}")
-
-    ocr_csv = (args.ocr_csv or manifest_path.parent.parent / "ocr_pages.csv").resolve()
-    store = ReviewStore(manifest_path)
-    searcher = TerytSearcher(args.region)
-    server = ThreadingHTTPServer((args.host, args.port), make_handler(store, searcher, ocr_csv))
-    print(f"Serving review GUI on http://{args.host}:{args.port}")
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        server.server_close()
-
-
-if __name__ == "__main__":
-    main()
