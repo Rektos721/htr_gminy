@@ -1,0 +1,23 @@
+# htr_gminy — zależności Python
+# Instalacja: pip install -r requirements.txt
+#
+# UWAGA: kraken/ketos mogą wymagać dłuższej instalacji (duże zależności ML).
+# Na Windows najlepiej Python 3.12, brak virtualenv (systemowy env).
+
+# --- OCR / HTR ---
+kraken>=5.0          # segmentacja blla + OCR; zawiera też komendę ketos (trening)
+
+# --- Przetwarzanie obrazów ---
+pymupdf>=1.27        # PDF → PNG (import jako fitz)
+opencv-python>=4.10  # deskew, usuwanie kratki, morfologia
+Pillow>=10.0         # podstawowe operacje na obrazach
+numpy>=1.26          # operacje macierzowe (cv2, PIL)
+
+# --- Gemini API (tylko do generowania GT — patrz zasada w README) ---
+google-genai>=1.0    # gemini_ocr_pages.py, gemini_ocr_cells.py
+
+# --- Output ---
+openpyxl>=3.1        # zapis Excel (.xlsx) — parse_wz_output.py, uldk_verify.py
+
+# --- Stdlib (nie wymagają pip install) ---
+# tkinter, csv, json, argparse, pathlib, re, urllib, http, threading, subprocess
