@@ -275,6 +275,49 @@ Następny krok po konwersji: `gemini_ocr_pages.py` na folderze z PNG lub `build_
 **Strategia HTR + Gemini:**  
 Kraken daje draft ~88% accuracy, Gemini poprawia resztę używając kontekstu (polskie nazwiska, daty, numery decyzji). Taniej niż dawać Gemini surowy obraz za każdym razem.
 
+### Krok 2 — parsowanie 7 kolumn → Excel
+
+```powershell
+python scripts\parse_wz_output.py `
+    --input  outputs\ocr_pages.csv `
+    --output outputs\rejestry_wz.xlsx `
+    --teryt  1430022
+
+# Jeśli kolumny w Twoich dokumentach są w innej kolejności:
+python scripts\parse_wz_output.py `
+    --input  outputs\ocr_pages.csv `
+    --output outputs\rejestry_wz.xlsx `
+    --teryt  1430022 `
+    --col-dzialka 3 --col-werdykt 5 --col-nr-decyzji 6
+```
+
+Wyjście: `rejestry_wz.xlsx` (kolorowany werdykt) + `rejestry_wz_do_weryfikacji.csv` (dla ULDK).
+
+### Krok 3 — weryfikacja działek ULDK
+
+```powershell
+# Znasz numer obrębu:
+python scripts\uldk_verify.py `
+    --input  outputs\rejestry_wz_do_weryfikacji.csv `
+    --output outputs\rejestry_wz_zweryfikowane.xlsx `
+    --teryt  1430022 `
+    --obreb  0001
+
+# Nie znasz obrębu (szuka po numerze działki w całej gminie):
+python scripts\uldk_verify.py `
+    --input  outputs\rejestry_wz_do_weryfikacji.csv `
+    --output outputs\rejestry_wz_zweryfikowane.xlsx `
+    --teryt  1430022
+
+# Sprawdź też podpodziały (45 → 45/1, 45/2 itd.):
+python scripts\uldk_verify.py `
+    --input  outputs\rejestry_wz_do_weryfikacji.csv `
+    --output outputs\rejestry_wz_zweryfikowane.xlsx `
+    --teryt  1430022 --obreb 0001 --check-subdivisions
+```
+
+Kody TERYT gmin: https://teryt.stat.gov.pl/
+
 **ULDK API** (weryfikacja działek):
 ```
 https://uldk.gugik.gov.pl/?request=GetParcelById&id={TERYT}.{obreb}.{nr}
@@ -313,6 +356,8 @@ https://uldk.gugik.gov.pl/?request=GetParcelById&id={TERYT}.{obreb}.{nr}
 | `match_ocr_to_cells.py` | Łączy wyniki Gemini OCR z wyciętymi komórkami tabeli |
 | `make_source_manifest.py` | Tworzy manifest źródłowy dla nowego zestawu skanów |
 | `pdf_to_pages.py` | PDF → PNG (300 dpi), auto-rotate 180°, usuwanie kratki |
+| `parse_wz_output.py` | Gemini CSV (cols_json) → parsuje 7 kolumn → Excel (.xlsx) |
+| `uldk_verify.py` | Weryfikacja numerów działek przez ULDK API gugik.gov.pl |
 | `test_gemini_ocr.py` | Szybki test OCR Gemini na jednym obrazku |
 
 ---
