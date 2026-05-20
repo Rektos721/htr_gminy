@@ -249,6 +249,29 @@ PDF
                                                              └─► GeoPackage/CSV → QGIS
 ```
 
+### Krok 0 — PDF → PNG (pierwsza rzecz do zrobienia)
+
+```powershell
+# Normalnie:
+python scripts\pdf_to_pages.py --input rejestr.pdf --output-dir outputs\pages\
+
+# Strony obrócone o 180° (częsty przypadek w skanach WZ):
+python scripts\pdf_to_pages.py --input rejestr.pdf --output-dir outputs\pages\ --rotate-180
+
+# Nie wiesz czy obrócone — auto-detekcja:
+python scripts\pdf_to_pages.py --input rejestr.pdf --output-dir outputs\pages\ --auto-rotate
+
+# Papier w kratkę (usuwa siatkę przed HTR):
+python scripts\pdf_to_pages.py --input rejestr.pdf --output-dir outputs\pages\ --auto-rotate --remove-grid
+
+# Cały katalog PDFów naraz:
+python scripts\pdf_to_pages.py --input katalog_z_pdf/ --output-dir outputs\pages\ --auto-rotate --remove-grid
+```
+
+Wyjście: `outputs/pages/<nazwa_pdf>/page_001.png`, `page_002.png`, ... + `pages_manifest.csv`
+
+Następny krok po konwersji: `gemini_ocr_pages.py` na folderze z PNG lub `build_training_from_blla.py`.
+
 **Strategia HTR + Gemini:**  
 Kraken daje draft ~88% accuracy, Gemini poprawia resztę używając kontekstu (polskie nazwiska, daty, numery decyzji). Taniej niż dawać Gemini surowy obraz za każdym razem.
 
@@ -289,6 +312,7 @@ https://uldk.gugik.gov.pl/?request=GetParcelById&id={TERYT}.{obreb}.{nr}
 | `build_review_html.py` | Buduje statyczny HTML z podglądem review |
 | `match_ocr_to_cells.py` | Łączy wyniki Gemini OCR z wyciętymi komórkami tabeli |
 | `make_source_manifest.py` | Tworzy manifest źródłowy dla nowego zestawu skanów |
+| `pdf_to_pages.py` | PDF → PNG (300 dpi), auto-rotate 180°, usuwanie kratki |
 | `test_gemini_ocr.py` | Szybki test OCR Gemini na jednym obrazku |
 
 ---
